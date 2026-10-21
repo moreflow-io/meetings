@@ -3,14 +3,14 @@ import {
   createMeetingClient,
   createMeetingOperationTransport,
   createMeetingReservationFlow,
+  type MeetingsOperationId,
+  MoreflowMeetingsError,
   meetingAccountId,
   meetingBookingId,
   meetingCalendarId,
   meetingReservationId,
-  meetingTypeId,
   meetingsOperationIds,
-  MoreflowMeetingsError,
-  type MeetingsOperationId,
+  meetingTypeId,
   type PublicBookingCreateInput
 } from './index';
 
@@ -28,11 +28,16 @@ function operationResponse(data: unknown, status = 200): Response {
 
 function bookingInput(): PublicBookingCreateInput {
   return {
-    account_id: accountId,
-    meeting_type_id: meetingType,
-    calendar_id: calendarId,
-    guest: { first_name: 'Ada', last_name: 'Lovelace', email: 'ada@example.test' },
-    dateTime: { start: '2026-08-25T10:00:00.000Z', end: '2026-08-25T10:30:00.000Z' },
+    accountId,
+    meetingTypeId: meetingType,
+    calendarId,
+    guest: {
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      email: 'ada@example.test'
+    },
+    startsAt: '2026-08-25T10:00:00.000Z',
+    endsAt: '2026-08-25T10:30:00.000Z',
     timezone: 'Europe/Berlin'
   };
 }
@@ -52,7 +57,6 @@ describe('@moreflow/meetings', () => {
       'bookings.public.create',
       'meetings.checkout.createStripePaymentIntent',
       'bookings.public.finalizePaid',
-      'bookings.public.reconcilePaid',
       'clients.checkoutOtp.requestPublic',
       'clients.checkoutOtp.verifyPublic',
       'meetings.reschedule.validateReschedule',
@@ -64,7 +68,7 @@ describe('@moreflow/meetings', () => {
   it('calls public operations through the typed transport and forwards idempotency keys', async () => {
     const requests: Request[] = [];
     const transport = createMeetingOperationTransport({
-      apiBaseUrl: 'https://api.moreflow.test/',
+      baseUrl: 'https://api.moreflow.test/',
       fetchImpl: async (input, init) => {
         requests.push(new Request(input, init));
         return operationResponse({ success: true });
@@ -72,43 +76,54 @@ describe('@moreflow/meetings', () => {
     });
 
     await transport.getBranding({ slug: 'alpha' });
-    await transport.getSlots({ meetingTypeId: meetingType, date: '2026-08-25' });
+    await transport.getSlots({
+      meetingTypeId: meetingType,
+      date: '2026-08-25'
+    });
     await transport.createReservation(
       {
-        account_id: accountId,
-        meeting_type_id: meetingType,
-        calendar_id: calendarId,
+        accountId,
+        meetingTypeId: meetingType,
+        calendarId,
         startsAt: '2026-08-25T10:00:00.000Z',
         endsAt: '2026-08-25T10:30:00.000Z'
       },
       { idempotencyKey: 'reservation-attempt' }
     );
-    await transport.createBooking(bookingInput(), { idempotencyKey: 'booking-attempt' });
+    await transport.createBooking(bookingInput(), {
+      idempotencyKey: 'booking-attempt'
+    });
     await transport.reschedule(
       {
         token: 'manage-token',
-        newStarting: '2026-08-26T10:00:00.000Z',
-        newEnd: '2026-08-26T10:30:00.000Z'
+        startsAt: '2026-08-26T10:00:00.000Z',
+        endsAt: '2026-08-26T10:30:00.000Z'
       },
       { idempotencyKey: 'reschedule-attempt' }
     );
 
     expect(requests.map((request) => request.url)).toEqual([
-      'https://api.moreflow.test/api/v1/operations/company.branding.getPublicBySlug',
-      'https://api.moreflow.test/api/v1/operations/meetings.availability.getPublicSlots',
-      'https://api.moreflow.test/api/v1/operations/meetings.reservations.createReservation',
-      'https://api.moreflow.test/api/v1/operations/bookings.public.create',
-      'https://api.moreflow.test/api/v1/operations/meetings.reschedule.publicReschedule'
+      'https://api.moreflow.test/v1/operations/company.branding.getPublicBySlug',
+      'https://api.moreflow.test/v1/operations/meetings.availability.getPublicSlots',
+      'https://api.moreflow.test/v1/operations/meetings.reservations.createReservation',
+      'https://api.moreflow.test/v1/operations/bookings.public.create',
+      'https://api.moreflow.test/v1/operations/meetings.reschedule.publicReschedule'
     ]);
+    expect(requests.every((request) => !request.headers.has('ngrok-skip-browser-warning'))).toBe(
+      true
+    );
     expect(requests[2]?.headers.get('idempotency-key')).toBe('reservation-attempt');
     expect(requests[3]?.headers.get('idempotency-key')).toBe('booking-attempt');
-    expect(await requests[2]?.json()).toMatchObject({ idempotencyKey: 'reservation-attempt' });
+    expect(await requests[2]?.json()).toMatchObject({
+      idempotencyKey: 'reservation-attempt'
+    });
   });
 
   it('captures acquisition tracking into booking payloads with caller precedence', async () => {
     let body: Record<string, unknown> | undefined;
     const meetings = createMeetingClient({
-      apiBaseUrl: 'https://api.moreflow.test',
+      baseUrl: 'https://api.moreflow.test',
+      acquisitionTracking: true,
       trackingCapture: () => ({
         gclid: 'captured-click',
         fbclid: 'captured-meta',
@@ -151,7 +166,11 @@ describe('@moreflow/meetings', () => {
         new Response(
           JSON.stringify({
             success: false,
-            error: { code: 'CONFLICT', message: 'Slot is unavailable.', recovery }
+            error: {
+              code: 'CONFLICT',
+              message: 'Slot is unavailable.',
+              recovery
+            }
           }),
           { status: 200, headers: { 'content-type': 'application/json' } }
         )
@@ -163,8 +182,96 @@ describe('@moreflow/meetings', () => {
       name: 'MoreflowMeetingsError',
       code: 'CONFLICT',
       recovery,
-      operationFailure: { code: 'CONFLICT', message: 'Slot is unavailable.', recovery }
+      operationFailure: {
+        code: 'CONFLICT',
+        message: 'Slot is unavailable.',
+        recovery
+      }
     });
+  });
+
+  it('does not expose the service-only paid booking reconciliation job', () => {
+    const transport = createMeetingOperationTransport({
+      fetchImpl: async () => operationResponse({})
+    });
+    expect(Object.values(meetingsOperationIds)).not.toContain('bookings.public.reconcilePaid');
+    expect('reconcilePaid' in transport).toBe(false);
+  });
+
+  it('uses a fresh reservation idempotency key per slot and honours an explicit key', async () => {
+    const keys: Array<string | undefined> = [];
+    let active = true;
+    let failNext = false;
+    const flow = createMeetingReservationFlow({
+      createReservation: async (_input, options) => {
+        keys.push(options?.idempotencyKey);
+        if (failNext) {
+          failNext = false;
+          throw new MoreflowMeetingsError({
+            message: 'Network down.',
+            retryable: true
+          });
+        }
+        return {
+          success: true as const,
+          reservation_id: reservationId,
+          expires_at: '2026-08-25T10:15:00.000Z',
+          reservation: {}
+        };
+      },
+      getActiveReservation: async () => ({ isActive: active }),
+      cancelReservation: async () => ({ success: true as const }),
+      createBooking: async () => {
+        throw new Error('not reached');
+      }
+    });
+    const slot = (startsAt: string) => ({
+      accountId,
+      meetingTypeId: meetingType,
+      startsAt,
+      endsAt: '2026-08-25T11:00:00.000Z'
+    });
+
+    await flow.reserve(slot('2026-08-25T10:00:00.000Z'));
+    await flow.reserve(slot('2026-08-25T10:30:00.000Z'));
+    expect(keys[0]).toBeTruthy();
+    expect(keys[1]).toBeTruthy();
+    expect(keys[1]).not.toBe(keys[0]);
+
+    // A failed attempt keeps its key for an identical retry; another slot rotates it.
+    failNext = true;
+    await expect(flow.reserve(slot('2026-08-25T11:00:00.000Z'))).rejects.toBeInstanceOf(
+      MoreflowMeetingsError
+    );
+    await flow.reserve(slot('2026-08-25T11:00:00.000Z'));
+    expect(keys[3]).toBe(keys[2]);
+    failNext = true;
+    await expect(flow.reserve(slot('2026-08-25T11:30:00.000Z'))).rejects.toBeInstanceOf(
+      MoreflowMeetingsError
+    );
+    await flow.reserve(slot('2026-08-25T12:00:00.000Z'));
+    expect(keys[5]).not.toBe(keys[4]);
+
+    // An explicit key always wins, including over a pending failed attempt.
+    failNext = true;
+    await expect(flow.reserve(slot('2026-08-25T12:30:00.000Z'))).rejects.toBeInstanceOf(
+      MoreflowMeetingsError
+    );
+    await flow.reserve({
+      ...slot('2026-08-25T12:30:00.000Z'),
+      idempotencyKey: 'caller-key'
+    });
+    expect(keys[7]).toBe('caller-key');
+
+    // Cancel and expiry discard keys, even when selecting the same slot again.
+    await flow.cancel();
+    await flow.reserve(slot('2026-08-25T13:00:00.000Z'));
+    active = false;
+    await flow.refresh();
+    expect(flow.getState().status).toBe('expired');
+    await flow.reserve(slot('2026-08-25T13:00:00.000Z'));
+    expect(keys[9]).not.toBe(keys[8]);
+    expect(keys).toHaveLength(10);
   });
 
   it('composes server reservation, booking, and cancellation operations without UI state', async () => {
@@ -180,14 +287,17 @@ describe('@moreflow/meetings', () => {
         calls.push('reserve');
         return reservation;
       },
-      getActiveReservation: async () => ({ isActive: true, reservation_id: reservationId }),
+      getActiveReservation: async () => ({
+        isActive: true,
+        reservation_id: reservationId
+      }),
       cancelReservation: async () => {
         calls.push('cancel');
         return { success: true as const };
       },
       createBooking: async (input) => {
         calls.push('book');
-        expect(input.reservation_id).toBe(reservationId);
+        expect(input.reservationId).toBe(reservationId);
         return {
           success: true,
           meeting_id: meetingBookingId('10000000-0000-4000-8000-000000000005'),
@@ -200,9 +310,9 @@ describe('@moreflow/meetings', () => {
     });
 
     await flow.reserve({
-      account_id: accountId,
-      meeting_type_id: meetingType,
-      calendar_id: calendarId,
+      accountId,
+      meetingTypeId: meetingType,
+      calendarId,
       startsAt: '2026-08-25T10:00:00.000Z',
       endsAt: '2026-08-25T10:30:00.000Z'
     });
@@ -213,7 +323,10 @@ describe('@moreflow/meetings', () => {
     const cancellable = createMeetingReservationFlow({
       ...{
         createReservation: async () => reservation,
-        getActiveReservation: async () => ({ isActive: true, reservation_id: reservationId }),
+        getActiveReservation: async () => ({
+          isActive: true,
+          reservation_id: reservationId
+        }),
         createBooking: async () => {
           throw new Error('not reached');
         }
@@ -221,13 +334,16 @@ describe('@moreflow/meetings', () => {
       cancelReservation: async () => ({ success: true as const })
     });
     await cancellable.reserve({
-      account_id: accountId,
-      meeting_type_id: meetingType,
+      accountId,
+      meetingTypeId: meetingType,
       startsAt: '2026-08-25T10:00:00.000Z',
       endsAt: '2026-08-25T10:30:00.000Z'
     });
     await cancellable.cancel();
-    expect(cancellable.getState()).toEqual({ status: 'cancelled', reservationId });
+    expect(cancellable.getState()).toEqual({
+      status: 'cancelled',
+      reservationId
+    });
 
     await expect(
       createMeetingReservationFlow({
@@ -239,5 +355,126 @@ describe('@moreflow/meetings', () => {
         }
       }).book(bookingInput())
     ).rejects.toBeInstanceOf(MoreflowMeetingsError);
+  });
+});
+
+describe('@moreflow/meetings family conventions', () => {
+  it('calls the production API by default instead of the embedding page origin', async () => {
+    const original = Object.getOwnPropertyDescriptor(globalThis, 'location');
+    Object.defineProperty(globalThis, 'location', {
+      configurable: true,
+      value: {
+        origin: 'https://customer.example',
+        href: 'https://customer.example/book'
+      }
+    });
+    try {
+      const urls: string[] = [];
+      const transport = createMeetingOperationTransport({
+        fetchImpl: async (input) => {
+          urls.push(String(input));
+          return operationResponse(null);
+        }
+      });
+      await transport.getCalendar({ meetingTypeId: meetingType });
+      expect(urls).toEqual([
+        'https://api.moreflow.io/v1/operations/calendars.index.getPublicByMeetingType'
+      ]);
+    } finally {
+      if (original) Object.defineProperty(globalThis, 'location', original);
+      else Reflect.deleteProperty(globalThis, 'location');
+    }
+  });
+
+  it('maps camelCase slot fields to the booking operation contract', async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    const transport = createMeetingOperationTransport({
+      fetchImpl: async (_input, init) => {
+        bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return operationResponse(null);
+      }
+    });
+
+    await transport.getCalendar({ meetingTypeId: meetingType });
+    await transport.createBooking({
+      accountId,
+      meetingTypeId: meetingType,
+      calendarId,
+      startsAt: '2026-08-25T10:00:00.000Z',
+      endsAt: '2026-08-25T10:30:00.000Z',
+      guest: {
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        email: 'ada@example.test'
+      },
+      timezone: 'Europe/Berlin'
+    });
+    await transport.createBooking(bookingInput());
+
+    expect(bodies[0]).toEqual({ meeting_type_id: meetingType });
+    expect(bodies[1]).toEqual(bodies[2]);
+    expect(bodies[1]).not.toHaveProperty('startsAt');
+  });
+
+  it('reports an aborted request as ABORTED instead of a retryable network error', async () => {
+    const controller = new AbortController();
+    const transport = createMeetingOperationTransport({
+      fetchImpl: async () => {
+        controller.abort();
+        throw new DOMException('The operation was aborted.', 'AbortError');
+      }
+    });
+
+    await expect(
+      transport.call(
+        meetingsOperationIds.brandingGetBySlug,
+        { slug: 'alpha' },
+        {
+          signal: controller.signal
+        }
+      )
+    ).rejects.toMatchObject({
+      name: 'MoreflowMeetingsError',
+      code: 'ABORTED',
+      retryable: false
+    });
+  });
+
+  it('types recovery and merges operation context into details', async () => {
+    const transport = createMeetingOperationTransport({
+      fetchImpl: async () =>
+        new Response(
+          JSON.stringify({
+            error: {
+              category: 'FAILED_PRECONDITION',
+              code: 'INVALID_CODE',
+              message: 'The code is wrong.',
+              recovery: {
+                operation: 'clients.checkoutOtp.requestPublic',
+                args: { accountId }
+              },
+              details: { attemptsRemaining: 2 },
+              requestId: 'req_9'
+            }
+          }),
+          { status: 400 }
+        )
+    });
+
+    const failure = await transport
+      .verifyCheckoutOtp({ accountId, otpId: 'otp-1', code: '000000' })
+      .catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(MoreflowMeetingsError);
+    expect(failure).toMatchObject({
+      code: 'INVALID_CODE',
+      status: 400,
+      retryable: false,
+      recovery: {
+        operation: 'clients.checkoutOtp.requestPublic',
+        args: { accountId }
+      },
+      details: { attemptsRemaining: 2 },
+      requestId: 'req_9'
+    });
   });
 });
