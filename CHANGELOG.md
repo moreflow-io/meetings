@@ -4,6 +4,10 @@ All notable changes to `@moreflow/meetings` are documented in this file.
 
 ## Unreleased
 
+## 0.2.1
+
+- Docs: browser clients call `https://api.moreflow.io` directly with no API token; the API answers CORS preflights from any origin, so no same-origin proxy or `baseUrl: ''` forwarding is required. An optional proxy is only for a strict Content Security Policy.
+
 ## 0.2.0
 
 - **Breaking — requires the next minor release:** replace `apiBaseUrl` with `baseUrl` and `trackingOptions` with `trackingCapture`. `trackingCapture` accepts built-in capture options or the existing callback returning booking tracking values, and always obeys `acquisitionTracking`. No old option aliases remain.

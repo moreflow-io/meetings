@@ -1,6 +1,6 @@
 {
   "name": "@moreflow/meetings",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Headless browser protocol helpers for Moreflow public meeting booking.",
   "license": "MIT",
   "repository": {

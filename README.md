@@ -13,8 +13,8 @@ The other public SDKs, the agent plugins, and the HTTP API are listed in the
 [Moreflow SDK overview](https://api.moreflow.io/v1/operations/docs/guide#sdks).
 
 Requests go to `https://api.moreflow.io` unless you pass `baseUrl` (for example
-`https://dev-api.moreflow.io`, or `''` behind a same-origin proxy). The page's
-own origin is never used by default.
+`https://dev-api.moreflow.io`, or `''` behind an optional same-origin proxy, see
+[Auth and CORS](#auth-and-cors)). The page's own origin is never used by default.
 
 Reservations and bookings take the same slot fields (`accountId`,
 `meetingTypeId`, `calendarId`, `startsAt`, `endsAt`), and `getCalendar`,
@@ -345,7 +345,7 @@ Pages without a bundler load the browser build, which exposes the same API as
 `window.MoreflowMeetings`:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@moreflow/meetings@0.2.0/dist/browser.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@moreflow/meetings@0.2.1/dist/browser.js"></script>
 <script>
   const meetings = window.MoreflowMeetings.createMeetingClient();
 </script>
@@ -363,12 +363,21 @@ there. Meeting types are public through their booking link, so there is no domai
 allowlist; the server decides availability, reservation lifetime, and every
 booking rule.
 
-The client posts JSON to `/v1/operations/<operation id>`, so the browser sends a
-CORS preflight first. `https://api.moreflow.io` does not answer that preflight
-for the meeting operations from other sites, so a browser on your domain cannot
-call it directly. Forward `POST /v1/operations/*` from your own
-server to `https://api.moreflow.io` and create the client with `baseUrl: ''`, or
-call the client from server-side code.
+The browser calls `https://api.moreflow.io` directly. The client posts JSON to
+`/v1/operations/<operation id>`, and the public meeting operations answer CORS
+requests from any site, including the preflight the browser sends first. Use
+[`@moreflow/api`](https://github.com/moreflow-io/api#readme) only from server
+code; it is not for the browser.
+
+You do not need a proxy. Route these requests through your own server only when
+your Content Security Policy cannot list `https://api.moreflow.io`. Preserving
+per-visitor rate limiting would require forwarding the real client IP through
+infrastructure Moreflow trusts. The public API currently rejects caller-supplied
+`CF-Connecting-IP` at Cloudflare and does not trust `X-Forwarded-For`, so all
+visitors share one rate limit at your server's IP.
+Never add an API token in the proxy; the public operations do not need one.
+Create the client with `baseUrl: ''` (or your proxy's URL) to send the requests
+there.
 
 ## Stored data
 
