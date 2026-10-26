@@ -149,7 +149,7 @@ export type PublicBookingDetails = {
   timezone: string;
   additionalGuests?: PublicBookingAdditionalGuest[] | undefined;
   meetingName?: string | undefined;
-  locationType?: 'physical' | 'phone' | 'google_meet' | 'microsoft_teams' | 'fahrplan' | undefined;
+  locationType?: 'physical' | 'phone' | 'google_meet' | 'microsoft_teams' | 'fahrplan' | 'custom_link' | 'moreflow_room' | undefined;
   locationAddress?: PublicBookingAddress | undefined;
   billingAddress?: PublicBookingAddress | undefined;
   paymentId?: string | undefined;

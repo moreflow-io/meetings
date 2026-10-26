@@ -1,16 +1,16 @@
 # `@moreflow/meetings`
 
-Headless browser protocol helpers for native Moreflow public meeting booking
+Headless browser protocol helpers for native moreflow public meeting booking
 embeds. The package contains no UI, React, styles, or business logic: you
 render the booking page, and every availability, reservation, and booking
-decision stays on the Moreflow server.
+decision stays on the moreflow server.
 
 ```bash
 npm install @moreflow/meetings
 ```
 
 The other public SDKs, the agent plugins, and the HTTP API are listed in the
-[Moreflow SDK overview](https://api.moreflow.io/v1/operations/docs/guide#sdks).
+[moreflow SDK overview](https://api.moreflow.io/v1/operations/docs/guide#sdks).
 
 Requests go to `https://api.moreflow.io` unless you pass `baseUrl` (for example
 `https://dev-api.moreflow.io`, or `''` behind an optional same-origin proxy, see
@@ -88,7 +88,7 @@ const availability = await meetings.getSlots({
   zone, else the meeting type's). It is not the visitor's local day.
 - Each slot is a 24-hour wall-clock start time `HH:mm` in that same
   `timezone`. A slot lasts `meetingType.duration` minutes.
-- `degraded: true` means an external calendar could not be read. Moreflow then
+- `degraded: true` means an external calendar could not be read. moreflow then
   returns no slots instead of guessing free time; show a "try again later"
   state.
 
@@ -234,7 +234,7 @@ function showConfirmation(booking: { meeting_id: string; guest_email: string }) 
 ```
 
 `book()` resolves with `{ success: true, meeting_id, reservation_id,
-reservation_expires_at, guest_email }`. Moreflow sends the confirmation email
+reservation_expires_at, guest_email }`. moreflow sends the confirmation email
 from the meeting type's template, adds the meeting to the host's calendar, and
 records the guest as a client in the CRM. Show the slot in the guest's zone and
 tell them to check `guest_email`. A retry of `book()` after a network error
@@ -345,7 +345,7 @@ Pages without a bundler load the browser build, which exposes the same API as
 `window.MoreflowMeetings`:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@moreflow/meetings@0.2.1/dist/browser.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@moreflow/meetings@0.2.2/dist/browser.js"></script>
 <script>
   const meetings = window.MoreflowMeetings.createMeetingClient();
 </script>
@@ -372,7 +372,7 @@ code; it is not for the browser.
 You do not need a proxy. Route these requests through your own server only when
 your Content Security Policy cannot list `https://api.moreflow.io`. Preserving
 per-visitor rate limiting would require forwarding the real client IP through
-infrastructure Moreflow trusts. The public API currently rejects caller-supplied
+infrastructure moreflow trusts. The public API currently rejects caller-supplied
 `CF-Connecting-IP` at Cloudflare and does not trust `X-Forwarded-For`, so all
 visitors share one rate limit at your server's IP.
 Never add an API token in the proxy; the public operations do not need one.
@@ -473,6 +473,6 @@ the appropriate operation and collecting any required input.
 
 Bug reports and feature requests are welcome in [this repository's issue
 tracker](https://github.com/moreflow-io/meetings/issues). Development happens
-in the private Moreflow monorepo alongside the server contract this package
+in the private moreflow monorepo alongside the server contract this package
 mirrors; each released version is synced here, so the published source always
 matches the npm release.
